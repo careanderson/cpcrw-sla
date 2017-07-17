@@ -18,7 +18,8 @@ library(stringr)
 #setwd("C:/Users/ande352/Documents/GitHub/cpcrw/sla")
 
 # Set wd to get SLA file
-setwd("//pnl/projects/Alaska_Carbon/")
+#setwd("//pnl/projects/Alaska_Carbon/") #if using Shared Drive
+setwd("~/cpcrw-sla/")
 
 # -----------------------------------------------------------------------------
 # 2014 SLA data
@@ -58,7 +59,7 @@ ggplot(subset(sla.2014, species2 %in% "Spruce")) +
 # 2015 SLA data
 # -----------------------------------------------------------------------------
 SLA_decoder <- read.csv("CPCRW_Data_2014/CPCRW_SLA/CPCRW_2015_SLA_decoder.csv")
-sla.2015 <- read.csv("CPCRW_Data_2014/CPCRW_SLA/CPCRW_2015_SLA.csv")[,-c(6,8,9)]
+sla.2015 <- read.csv("CPCRW_Data_2014/CPCRW_SLA/CPCRW_2015_SLA.csv")[,-c(8,9)]
 sla.2015.total <- merge(SLA_decoder, sla.2015, by="Number") #Merge SLA with decoder
 
 sla.2015.total$Year <- 2015

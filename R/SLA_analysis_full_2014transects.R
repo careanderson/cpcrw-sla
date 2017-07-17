@@ -8,29 +8,18 @@
 
 # Load necessary packages
 library(ggplot2)
-library(lme4)
-library(reshape2)
-library(stringr)
 library(ape)
 library(nlme)
-library(vegan)
 library(MuMIn)
-library(GGally)
-library(rpart)
 library(VGAM)
 library(grid)
 library(gridExtra)
 library(coin)
-library(readr)
-library(AICcmodavg)
 library(segmented)
 
-# Need to setwd to Github folder to run 1-sla.R
-#setwd("C:/Users/ande352/Documents/GitHub/cpcrw/sla")
-#setwd("C:/Users/ande352/Documents/GitHub/cpcrw/extensive") #for extensive
-
-# Set wd to get SLA file
-setwd("//pnl/projects/Alaska_Carbon/")
+# Set wd to get SLA files
+#setwd("//pnl/projects/Alaska_Carbon/") #if using Shared Drive
+setwd("~/cpcrw-sla/")
 
 # -----------------------------------------------------------------------------
 # PROCESSING DATA (FIGURES/MODELS)
@@ -223,7 +212,7 @@ ggplot(subset(sla_all.nosla, ald_cm < 151)) + #for plot inset
   xlab("Slope (%)") + ylab("ALD (cm)") +
   theme_bw() +
   theme(axis.text = element_text(size = 35),
-        axis.title = element_text(size = 35),
+#        axis.title = element_text(size = 35),
         axis.title = element_blank(),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -1202,17 +1191,6 @@ summary(lm20)
 par(mfrow = c(2, 2))
 plot(lm20)
 
-
-# -----------------------------------------------------------------------------
-## Testing Monte Carlo simulations for sample size determination
-# -----------------------------------------------------------------------------
-# https://www.youtube.com/watch?v=nJyG8-kbbgA
-
-# 6 variables hypothesized to affect SLA (soil moisture, C:N, ALD, soil temp, moss depth, slope)
-
-
-
-
 # -----------------------------------------------------------------------------
 ## 3. PATH ANALYSIS
 # -----------------------------------------------------------------------------
@@ -1222,7 +1200,6 @@ samples = 18 #or 36
 parameter = 6 #or 7, 8, depending on full model
 d = samples/parameter
 d
-
 
 ##### piecewiseSEM
 # https://jslefche.files.wordpress.com/2016/02/5_local-estimation3.pdf
@@ -1252,8 +1229,6 @@ sem.model.fits(modelList)
 sem.coefs(modelList)
 # scaled coefficients
 sem.coefs(modelList, path.alder, standardize="scale")
-
-
 
 # full model (Fig. 1)
 modelList2 = list(
@@ -1288,20 +1263,14 @@ modelList3 = list(
 sem.fit(modelList3, path.alder, corr.errors="Temperature ~~ MossDepth")
 sem.coefs(modelList3, path.alder, standardize="scale", corr.errors="Temperature ~~ MossDepth")
 
-##### Using Lavaan
-# https://www.youtube.com/watch?v=-B37sK9NTfI
+##### Using Lavaan (https://www.youtube.com/watch?v=-B37sK9NTfI)
 library(lavaan)
-library(semPlot)
 library(corrplot)
-
 
 # compare above piecewiseSEM with lavaan
 modelList.lavaan = sem.lavaan(modelList, path.alder)
 lavaan::summary(modelList.lavaan, rsq=TRUE, standardize=TRUE)
-
 varTable(modelList.lavaan)
-
-# Violations of normality? Not sure if path analysis can handle non-linearities.
 
 # Data to use
 path.alder <- sla_soil.ag.alder
@@ -1321,20 +1290,14 @@ fit <- sem(model.sla2, data=path.spruce)
 summary(fit)
 summary(fit, standardized=TRUE, fit.measures=TRUE, rsq=TRUE)
 
-
 model.sla2 <- '0.489*SLA.mean ~ ald_cm + 0.345*CN + 0.435*Ow.mean
                 0.345*CN ~ Ow.mean
                 0.435*Ow.mean ~ ald_cm'
 datsim <- simulateData(model.sla2, model.type='sem', sample.nobs=c(30,30))
 
-?simulateData
-
 # http://onlinelibrary.wiley.com/doi/10.1890/ES12-00048.1/epdf
 # https://jonlefcheck.net/2014/07/06/piecewise-structural-equation-modeling-in-ecological-research/
-
 # http://pareonline.net/getvn.asp?v=19&n=12
-
-
 # http://web.stanford.edu/class/psych253/section/section_8/section8.html
 plot_matrix <- function(matrix_toplot){
   corrplot(matrix_toplot, is.corr = FALSE, 
