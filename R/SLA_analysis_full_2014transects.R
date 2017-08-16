@@ -7,7 +7,7 @@
 # Carolyn Anderson November 2015
 
 # Load necessary packages
-library(ggplot2)
+library(tidyverse)
 library(ape)
 library(nlme)
 library(MuMIn)
@@ -20,6 +20,19 @@ library(segmented)
 # Set wd to get SLA files
 #setwd("//pnl/projects/Alaska_Carbon/") #if using Shared Drive
 setwd("~/cpcrw-sla/")
+
+# -----------------------------------------------------------------------------
+# AVERAGE BASAL AREA AND TREE DENSITY VALUES
+# -----------------------------------------------------------------------------
+# Run 1-tree_survey.R script from:
+# https://github.com/bpbond/cpcrw/blob/master/tree_survey/1-tree_survey.R
+
+# Average Basal area (m2/ha) and Density (/ha), and corresponding standard deviation
+mean(d1$`Basal area (m2/ha)`)
+sd(d1$`Basal area (m2/ha)`)
+
+mean(d1$`Density (/ha)`)
+sd(d1$`Density (/ha)`)
 
 # -----------------------------------------------------------------------------
 # PROCESSING DATA (FIGURES/MODELS)
@@ -61,6 +74,18 @@ sla_all.nosla$ald_class2 <- as.factor(sla_all.nosla$ald_class2)
 
 sla_all_soil.nosla2$ald_class2 <- ifelse(sla_all_soil.nosla2$ald_cm < 140, "Shallow", "Deep")
 sla_all_soil.nosla2$ald_class2 <- as.factor(sla_all_soil.nosla2$ald_class2)
+
+# -----------------------------------------------------------------------------
+# AVERAGE AND MEDIAN ALD VALUES
+# -----------------------------------------------------------------------------
+range(sla_all.nosla$ald_cm) #min and max ALD values
+mean(sla_all.nosla$ald_cm)
+median(sla_all.nosla$ald_cm)
+
+# Histogram of ALD values
+ggplot(sla_all.nosla) +
+  aes(x=ald_cm) +
+  geom_histogram()
 
 # -----------------------------------------------------------------------------
 # SAMPLING LAYOUT
@@ -186,7 +211,6 @@ ggplot(sla_all) +
         legend.text = element_text(size=22),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
-
 
 
 ## Figure: Slope vs. ALD
@@ -723,8 +747,26 @@ plot12 <- ggplot(subset(sla.spruce.55.merge, Species %in% "PIMA")) +
         legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
+
+plot12b <- ggplot(subset(sla.spruce.55.merge, Species %in% "PIMA")) +
+  aes(y=(npp_gC_m2), x=(SLA.mean)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  #  ggtitle("Spruce only") +
+#  xlab("Spruce SLA") + ylab("Spruce NPP") +
+  xlab(expression(Spruce~SLA~(cm^2~g^{-1}))) + ylab(expression(Spruce~NPP~(g~C~m^2~yr^-1))) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
 #R-sq:
 summary(lm(log(SLA.mean) ~ log(npp_gC_m2), data=sla.spruce.55.merge))
+summary(lm((SLA.mean) ~ (npp_gC_m2), data=sla.spruce.55.merge))
 
 # -----------------------------------------------------------------------------
 # NPP for broadleaf (Alder, Birch)
@@ -759,12 +801,27 @@ plot13 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
+plot13b <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
+  aes(x=(CN), y=(npp_gC)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  xlab("Soil C:N") + ylab(expression(Total~NPP~(g~C~m^2~yr^-1))) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+
 sla_all_soil.nosla2b <- subset(sla_all_soil.nosla2, Depth_cm %in% 6)
 
-lm.npp.cn <- lm(log(CN) ~ log(npp_gC), data=sla_all_soil.nosla2b)
-summary(lm.npp.cn)
+summary(lm(log(CN) ~ log(npp_gC), data=sla_all_soil.nosla2b))
+summary(lm(CN ~ npp_gC, data=sla_all_soil.nosla2b))
 
-grid.arrange(plot12, plot13, ncol=2, heights=c(3,3), widths=c(3,3))
+grid.arrange(plot12b, plot13b, ncol=2, heights=c(3,3), widths=c(3,3))
 
 
 ag.soil.depths <- do.call(data.frame, aggregate(cbind(CN, npp_gC) ~ Transect + Position.E.to.W_m, sla_all_soil.nosla2, function(x) c(
