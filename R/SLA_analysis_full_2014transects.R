@@ -323,7 +323,30 @@ plot5 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
+## Figure: C:N vs. soil moisture
+plot7 <- ggplot(subset(sla_all_soil.nosla2)) +
+  aes(x=(Ow.mean), y=(CN)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  xlab("Soil moisture") + ylab("Soil C:N") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        plot.title = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+# Figure: plot4, plot5
 grid.arrange(plot4, plot5, ncol=2, heights=c(3,3), widths=c(3,3))
+
+# Figure: plot4, plot5, plot7
+fig <- grid.arrange(plot7, plot4, plot5, ncol=3, heights=c(3,3,3), widths=c(3,3,3))
+
+pdf("soilCN_panel.pdf", width = 10, height = 10, useDingbats=FALSE) # Open a new pdf file
+grid.arrange(plot7, plot4, plot5, ncol=3, heights=c(3,3,3), widths=c(3,3,3)) # Write the grid.arrange in the file
+dev.off() # Close the file
 
 # -----------------------------------------------------------------------------
 ## Figure: ALD vs. soil moisture
@@ -354,22 +377,13 @@ ggplot(subset(sla_all_soil, Depth_cm %in% 6)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
-## Figure: C:N vs. soil moisture
-plot7 <- ggplot(subset(sla_all_soil.nosla2)) +
-  aes(x=(Ow.mean), y=(CN)) +
-  geom_point() +
-  geom_smooth(method="lm") +
-  xlab("Soil moisture") + ylab("Soil C:N") +
-  theme_bw() +
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        plot.title = element_text(size = 14),
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size=14),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
+# Figure: plot6, plot7
 grid.arrange(plot6, plot7, ncol=2, heights=c(3,3), widths=c(3,3))
+
+# Figure: plot6 (soil moisture vs. ALD)
+pdf("./moisture_ald.pdf", width=3, height=3)
+print(plot6)
+graphics.off()
 
 # -----------------------------------------------------------------------------
 ## Figure: SLA vs. C:N
