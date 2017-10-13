@@ -381,9 +381,9 @@ ggplot(subset(sla_all_soil, Depth_cm %in% 6)) +
 grid.arrange(plot6, plot7, ncol=2, heights=c(3,3), widths=c(3,3))
 
 # Figure: plot6 (soil moisture vs. ALD)
-pdf("./moisture_ald.pdf", width=3, height=3)
-print(plot6)
-graphics.off()
+#pdf("./moisture_ald.pdf", width=3, height=3)
+#print(plot6)
+#graphics.off()
 
 # -----------------------------------------------------------------------------
 ## Figure: SLA vs. C:N
