@@ -95,16 +95,16 @@ sla_all.nosla2$soildata <- -999
 sla_all.nosla2$soildata <- ifelse(sla_all.nosla2$Transect < 8, "Soil data", "No soil data")
 sla_all.nosla2$Transect <- as.factor(sla_all.nosla2$Transect)
 
-ggplot(subset(sla_all.nosla2)) +
+ggplot(subset(sla_all.nosla2)) + ###6 x 6inches for pdf export
   aes(x=Position.S.to.N_m, y=Position.E.to.W_m) +
 #  geom_vline(data=sla_all.nosla2, aes(xintercept=Position.S.to.N_m, linetype="Transect"), show.legend=FALSE) + 
   geom_point(aes(color="value3"), size=8) + #aes(color=soildata)
   geom_point(data=core.pos, aes(x=Position.S.to.N_m, y=Position.E.to.W_m), size=4) +
   xlab("Meters (south to north)") + ylab("Meters (east to west)") +
   theme_bw() +
-  theme(axis.text = element_text(size = 15),
-        axis.title = element_text(size = 15),
-        plot.title = element_text(size = 15),
+  theme(axis.text = element_text(size = 20),
+        axis.title = element_text(size = 20),
+        plot.title = element_text(size = 20),
         legend.position="none",
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank()) +
@@ -214,18 +214,18 @@ ggplot(sla_all) +
 
 
 ## Figure: Slope vs. ALD
-ggplot(subset(sla_all.nosla)) +
+ggplot(subset(sla_all.nosla)) + ###4 x 4inches for pdf export
   aes(x=SlopePercent, y=ald_cm) +
   geom_point() +
 #  geom_smooth(method="lm") +
   geom_vline(xintercept = 22.9, linetype="solid", color="gray", size=1) +
   xlab("Slope (%)") + ylab("ALD (cm)") +
   theme_bw() +
-  theme(axis.text = element_text(size = 28),
-        axis.title = element_text(size = 30),
-        plot.title = element_text(size = 30),
-        legend.title = element_text(size = 22),
-        legend.text = element_text(size=22),
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
@@ -251,11 +251,11 @@ plot1 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   geom_vline(xintercept = 140, linetype="longdash") +
   xlab("ALD (cm)") + ylab("Moss depth (cm)") +
   theme_bw() +
-  theme(axis.text = element_text(size = 12),
-        axis.title = element_text(size = 12),
-        plot.title = element_text(size = 12),
-        legend.title = element_text(size = 12),
-        legend.text = element_text(size=12),
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
@@ -266,11 +266,11 @@ plot2 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   geom_smooth(method="lm") +
   xlab("Moss depth (cm)") + ylab(expression(paste("Soil temperature (",degree,"C)"))) +
   theme_bw() +
-  theme(axis.text = element_text(size = 12),
-        axis.title = element_text(size = 12),
-        plot.title = element_text(size = 12),
-        legend.title = element_text(size = 12),
-        legend.text = element_text(size=12),
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
@@ -282,15 +282,15 @@ plot3 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   geom_vline(xintercept = 140, linetype="longdash") +
   xlab("ALD (cm)") + ylab(expression(paste("Soil temperature (",degree,"C)"))) +
   theme_bw() +
-  theme(axis.text = element_text(size = 12),
-        axis.title = element_text(size = 12),
-        plot.title = element_text(size = 12),
-        legend.title = element_text(size = 12),
-        legend.text = element_text(size=12),
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
-grid.arrange(plot1, plot2, plot3, ncol=3, heights=c(3,3,3), widths=c(3,3,3))
+grid.arrange(plot1, plot2, plot3, ncol=3, heights=c(3,3,3), widths=c(3,3,3))  ###9 x 9inches for pdf export
 
 # -----------------------------------------------------------------------------
 ## Figure: C:N vs. soil temperature
@@ -300,11 +300,11 @@ plot4 <- ggplot(subset(sla_all_soil.nosla2)) +
   geom_smooth(method="lm") +
   xlab(expression(paste("Soil temperature (",degree,"C)"))) + ylab("Soil C:N") +
   theme_bw() +
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        plot.title = element_text(size = 14),
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size=14),
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
@@ -315,11 +315,11 @@ plot5 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   geom_smooth(method="lm") +
   xlab("Moss depth (cm)") + ylab("Soil C:N") +
   theme_bw() +
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        plot.title = element_text(size = 14),
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size=14),
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
@@ -328,13 +328,13 @@ plot7 <- ggplot(subset(sla_all_soil.nosla2)) +
   aes(x=(Ow.mean), y=(CN)) +
   geom_point() +
   geom_smooth(method="lm") +
-  xlab("Soil moisture") + ylab("Soil C:N") +
+  xlab(expression(Soil~moisture~(g~g^{-1}))) + ylab("Soil C:N") +
   theme_bw() +
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        plot.title = element_text(size = 14),
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size=14),
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
@@ -342,7 +342,7 @@ plot7 <- ggplot(subset(sla_all_soil.nosla2)) +
 grid.arrange(plot4, plot5, ncol=2, heights=c(3,3), widths=c(3,3))
 
 # Figure: plot4, plot5, plot7
-fig <- grid.arrange(plot7, plot4, plot5, ncol=3, heights=c(3,3,3), widths=c(3,3,3))
+grid.arrange(plot7, plot4, plot5, ncol=3, heights=c(3,3,3), widths=c(3,3,3))  ###9 x 9inches for pdf export
 
 pdf("soilCN_panel.pdf", width = 10, height = 10, useDingbats=FALSE) # Open a new pdf file
 grid.arrange(plot7, plot4, plot5, ncol=3, heights=c(3,3,3), widths=c(3,3,3)) # Write the grid.arrange in the file
@@ -350,20 +350,23 @@ dev.off() # Close the file
 
 # -----------------------------------------------------------------------------
 ## Figure: ALD vs. soil moisture
-plot6 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
+plot6 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) + ###4 x 4inches for pdf export
   aes(x=(ald_cm), y=(Ow.mean)) +
   geom_point() +
 #  geom_smooth(method="lm") +
   geom_vline(xintercept = 140, linetype="longdash") +
-  xlab("ALD (cm)") + ylab("Soil moisture") +
+  xlab("ALD (cm)") + ylab(expression(Soil~moisture~(g~g^{-1}))) +
   theme_bw() +
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        plot.title = element_text(size = 14),
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size=14),
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
+
+
+ylab(expression(SLA~(cm^2~g^{-1})))
 
 ggplot(subset(sla_all_soil, Depth_cm %in% 6)) +
   aes(x=ald_class2, y=Ow.mean) +
@@ -488,7 +491,7 @@ plot9 <- ggplot(sla_soil.ag.both) +
         strip.text = element_text(size=18))
 
 grid.newpage()
-grid.draw(rbind(ggplotGrob(plot8), ggplotGrob(plot9), size = "last"))
+grid.draw(rbind(ggplotGrob(plot8), ggplotGrob(plot9), size = "last")) ###8 x 8inches for pdf export
 
 # -----------------------------------------------------------------------------
 ## Figure: SLA vs. ALD
@@ -587,7 +590,7 @@ ggplot(subset(sla_all.ag.spruce)) +
 sla_all.ag.both <- rbind(sla_all.ag.alder, sla_all.ag.spruce)
 ########
 
-plot10 <- ggplot(sla_all.ag.both) + ###4 x 7.29inches for pdf export
+plot10 <- ggplot(sla_all.ag.both) + ###4 x 8inches for pdf export
   aes(x=ald_cm, y=SLA.mean) +
   geom_point() +
   geom_smooth(method="lm") +
@@ -835,7 +838,7 @@ sla_all_soil.nosla2b <- subset(sla_all_soil.nosla2, Depth_cm %in% 6)
 summary(lm(log(CN) ~ log(npp_gC), data=sla_all_soil.nosla2b))
 summary(lm(CN ~ npp_gC, data=sla_all_soil.nosla2b))
 
-grid.arrange(plot12b, plot13b, ncol=2, heights=c(3,3), widths=c(3,3))
+grid.arrange(plot12b, plot13b, ncol=2, heights=c(3,3), widths=c(3,3)) ###8 x 9inches for pdf export
 
 
 ag.soil.depths <- do.call(data.frame, aggregate(cbind(CN, npp_gC) ~ Transect + Position.E.to.W_m, sla_all_soil.nosla2, function(x) c(
@@ -1129,7 +1132,7 @@ p2 <- ggplot(lm12, aes(.fitted, .resid)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
-grid.arrange(p1, p2, ncol=2, heights=c(3,3), widths=c(3,3))
+grid.arrange(p1, p2, ncol=2, heights=c(3,3), widths=c(3,3)) ###8 x 9inches for pdf export
 
 
 ##### Testing segmented regression for breakpoints
