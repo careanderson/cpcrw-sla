@@ -16,9 +16,9 @@ library(grid)
 library(gridExtra)
 library(coin)
 library(segmented)
+library(mblm)
 
 # Set wd to get SLA files
-#setwd("//pnl/projects/Alaska_Carbon/") #if using Shared Drive
 setwd("~/cpcrw-sla/")
 
 # -----------------------------------------------------------------------------
@@ -171,11 +171,16 @@ sla_soil.ag2 <- do.call(data.frame, aggregate(cbind(WeightDry_g, SurfaceArea_cm2
 sla_soil.ag.alder <- subset(sla_soil.ag, species2 %in% "Alder")
 sla_soil.ag.spruce <- subset(sla_soil.ag, species2 %in% "Spruce")
 
+# rbind the alder and spruce datasets:
+sla_soil.ag.both <- rbind(sla_soil.ag.alder, sla_soil.ag.spruce)
+
+sla_all.ag.both <- rbind(sla_all.ag.alder, sla_all.ag.spruce)
+
 # -----------------------------------------------------------------------------
 ## FIGURES
 # -----------------------------------------------------------------------------
-## Histograms of SLA
-# alder
+## Histograms of SLA (alder and spruce)
+# -----------------------------------------------------------------------------
 ggplot(sla_alder) +
   aes(x=SLA) +
   geom_histogram() +
@@ -186,7 +191,6 @@ ggplot(sla_alder) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
-# spruce
 ggplot(sla_spruce) +
   aes(x=SLA) +
   geom_histogram() +
@@ -212,12 +216,12 @@ ggplot(sla_all) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
-
+# -----------------------------------------------------------------------------
 ## Figure: Slope vs. ALD
+# -----------------------------------------------------------------------------
 ggplot(subset(sla_all.nosla)) + ###4 x 4inches for pdf export
   aes(x=SlopePercent, y=ald_cm) +
   geom_point() +
-#  geom_smooth(method="lm") +
   geom_vline(xintercept = 22.9, linetype="solid", color="gray", size=1) +
   xlab("Slope (%)") + ylab("ALD (cm)") +
   theme_bw() +
@@ -232,18 +236,76 @@ ggplot(subset(sla_all.nosla)) + ###4 x 4inches for pdf export
 ggplot(subset(sla_all.nosla, ald_cm < 151)) + #for plot inset
   aes(x=SlopePercent, y=ald_cm) +
   geom_point(size=5) +
-#  geom_smooth(method="lm", size=3) +
   xlab("Slope (%)") + ylab("ALD (cm)") +
   theme_bw() +
   theme(axis.text = element_text(size = 35),
-#        axis.title = element_text(size = 35),
         axis.title = element_blank(),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         panel.border = element_rect(color="red", size=6))
 
+# TESTING MODEL: Is there a relationship between slope and ALD? Use full dataset (sla_all.ag.spruce).
+plot(ald_cm ~ SlopePercent, data=sla_all.nosla)
+lm1 <- lm(ald_cm ~ SlopePercent, data = sla_all.nosla)
+summary(lm1)
+par(mfrow = c(2, 2))
+plot(lm1)
+
+# Segmented regression
+seg.mod.ald <- segmented(lm1, seg.Z = ~SlopePercent, psi=20)
+summary(seg.mod.ald)
+seg.mod.ald$psi
+slope(seg.mod.ald)
+my.fitted3 <- fitted(seg.mod.ald)
+my.model3 <- data.frame(Slope = sla_all.nosla$SlopePercent, ALD = my.fitted3)
+ggplot(my.model3, aes(x=Slope, y=ALD)) + geom_line()
+
+cor.test(sla_all.nosla$ald_cm, sla_all.nosla$SlopePercent, method="spearman", exact=FALSE)
+spearman_test(sla_all.nosla$ald_cm ~ sla_all.nosla$SlopePercent, distribution="asymptotic", ties.method="mid-ranks")
+
+#Subset with slope < 23 to look at ald < 151 (threshold)
+sla_all.ag.unique.lowslope <- subset(sla_all.nosla, SlopePercent < 23)
+plot(ald_cm ~ SlopePercent, data=sla_all.ag.unique.lowslope)
+summary(lm(ald_cm ~ SlopePercent, data = sla_all.ag.unique.lowslope))
+
+cor.test(sla_all.ag.unique.lowslope$ald_cm, sla_all.ag.unique.lowslope$SlopePercent, method="spearman", exact=FALSE)
+spearman_test(sla_all.ag.unique.lowslope$ald_cm ~ sla_all.ag.unique.lowslope$SlopePercent, distribution="asymptotic", ties.method="mid-ranks")
+summary(lm(ald_cm ~ SlopePercent, data=sla_all.ag.unique.lowslope))
+
+#Since ALD has an upper lmit of 150cm (>150 keyed to 151 in data), need to to a Tobit regression to reflect this upper limit.
+#http://www.ats.ucla.edu/stat/r/dae/tobit.htm
+#http://www1.karlin.mff.cuni.cz/~pesta/NMFM404/tobit.html#Tobit_model
+#http://www.rdocumentation.org/packages/VGAM/functions/tobit
+#http://stackoverflow.com/questions/19014122/pseudo-r2-using-vglm
+#https://cran.r-project.org/web/packages/censReg/vignettes/censReg.pdf
+ald.slope.tobit <- vglm(ald_cm ~ SlopePercent, tobit(Upper=151), data=sla_all.nosla)
+summary(ald.slope.tobit)
+ctable <- coef(summary(ald.slope.tobit))
+pvals <- 2 * pt(abs(ctable[, "z value"]), df.residual(ald.slope.tobit), lower.tail=FALSE)
+cbind(ctable, pvals)  
+#To examine how well our model fits the data; plot of residuals to assess their absolute & relative (pearson) values and assumptions
+sla_all.nosla$yhat <- fitted(ald.slope.tobit)[,1]
+sla_all.nosla$rr <- resid(ald.slope.tobit, type = "response")
+sla_all.nosla$rp <- resid(ald.slope.tobit, type = "pearson")[,1]
+
+par(mfcol = c(2, 3))
+with(sla_all.nosla, {
+  plot(yhat, rr, main = "Fitted vs Residuals")
+  qqnorm(rr)
+  plot(yhat, rp, main = "Fitted vs Pearson Residuals")
+  qqnorm(rp)
+  plot(ald_cm, rp, main = "Actual vs Pearson Residuals")
+  plot(ald_cm, yhat, main = "Actual vs Fitted")
+})
+
+summary(lm(yhat ~ ald_cm, data=sla_all.nosla))
+(r <- with(sla_all.nosla, cor(yhat, ald_cm)))
+r^2
+plot(yhat ~ ald_cm, data=sla_all.nosla)
+
 # -----------------------------------------------------------------------------
 ## Figure: ALD vs. Moss depth
+# -----------------------------------------------------------------------------
 plot1 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   aes(x=ald_cm, y=MossDepth) +
   geom_point() +
@@ -259,7 +321,28 @@ plot1 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
+# QUESTION: Is there a relationship between ALD and the depth of the moss-organic layer?
+sla_all_soil.nosla2.6cm <- subset(sla_all_soil.nosla2, Depth_cm %in% 6)
+
+plot(MossDepth ~ ald_cm, data=sla_all_soil.nosla2.6cm)
+lm2 <- (lm(MossDepth ~ ald_cm, sla_all_soil.nosla2.6cm))
+summary(lm2)
+par(mfrow = c(2, 2))
+plot(lm2)
+
+shapiro.test(sla_all_soil.nosla2.6cm$ald_cm) #ald not normal distribution
+shapiro.test(sla_all_soil.nosla2.6cm$MossDepth)
+
+t.test(sla_all_soil.nosla2.6cm$MossDepth ~ sla_all_soil.nosla2.6cm$ald_class2)
+#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
+#alternative="less" or alternative="greater" option to specify a one tailed test.
+
+var.test(sla_all_soil.nosla2.6cm$MossDepth[sla_all_soil.nosla2.6cm$ald_class2=="Shallow"],
+         sla_all_soil.nosla2.6cm$MossDepth[sla_all_soil.nosla2.6cm$ald_class2=="Deep"])
+
+# -----------------------------------------------------------------------------
 ## Figure: Soil temperature vs. Moss depth
+# -----------------------------------------------------------------------------
 plot2 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   aes(x=MossDepth, y=Temperature) +
   geom_point() +
@@ -274,7 +357,16 @@ plot2 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
+# QUESTION: Is there a relationship between soil temperature and moss depth? Use soil data set (sla_soil.ag.alder/spruce).
+plot(Temperature ~ MossDepth, data = sla_soil.ag.spruce)
+lm4 <- (lm(Temperature ~ MossDepth, data = sla_soil.ag.spruce))
+summary(lm4)
+par(mfrow = c(2, 2))
+plot(lm4)
+
+# -----------------------------------------------------------------------------
 ## Figure: Soil temperature vs. ALD
+# -----------------------------------------------------------------------------
 plot3 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   aes(x=ald_cm, y=Temperature) +
   geom_point() +
@@ -292,8 +384,25 @@ plot3 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
 
 grid.arrange(plot1, plot2, plot3, ncol=3, heights=c(3,3,3), widths=c(3,3,3))  ###9 x 9inches for pdf export
 
+# QUESTION: Is there a relationship between soil temperature and ALD? Use soil data set (sla_soil.ag.alder/spruce).
+plot(Temperature ~ ald_cm, data = sla_soil.ag.spruce)
+lm3 <- (lm(Temperature ~ ald_cm, data = sla_soil.ag.spruce))
+summary(lm3)
+par(mfrow = c(2, 2))
+plot(lm3)
+
+shapiro.test(sla_all_soil.nosla2.6cm$Temperature)
+
+t.test(sla_all_soil.nosla2.6cm$Temperature ~ sla_all_soil.nosla2.6cm$ald_class2)
+#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
+#alternative="less" or alternative="greater" option to specify a one tailed test.
+
+var.test(sla_all_soil.nosla2.6cm$Temperature[sla_all_soil.nosla2.6cm$ald_class2=="Shallow"],
+         sla_all_soil.nosla2.6cm$Temperature[sla_all_soil.nosla2.6cm$ald_class2=="Deep"])
+
 # -----------------------------------------------------------------------------
 ## Figure: C:N vs. soil temperature
+# -----------------------------------------------------------------------------
 plot4 <- ggplot(subset(sla_all_soil.nosla2)) +
   aes(x=Temperature, y=CN) +
   geom_point() +
@@ -308,7 +417,16 @@ plot4 <- ggplot(subset(sla_all_soil.nosla2)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
+# QUESTION: Is there a relationship between soil C:N and soil temperature?
+plot(CN ~ Temperature, data = sla_all_soil.nosla2)
+lm5 <- (lm(CN ~ Temperature, data = sla_all_soil.nosla2))
+summary(lm5)
+par(mfrow = c(2, 2))
+plot(lm5)
+
+# -----------------------------------------------------------------------------
 ## Figure: C:N vs. Moss-organic layer depth
+# -----------------------------------------------------------------------------
 plot5 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   aes(x=(MossDepth), y=(CN)) +
   geom_point() +
@@ -323,7 +441,16 @@ plot5 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
+# QUESTION: Indirect: Is there a relationship between soil C:N and the depth of the moss-organic layer? Use soil data set (sla_soil.ag.alder/spruce).
+plot(CN ~ MossDepth, data = sla_all_soil.nosla2.6cm)
+lm6 <- (lm(CN ~ MossDepth, data = sla_all_soil.nosla2.6cm))
+summary(lm6)
+par(mfrow = c(2, 2))
+plot(lm6)
+
+# -----------------------------------------------------------------------------
 ## Figure: C:N vs. soil moisture
+# -----------------------------------------------------------------------------
 plot7 <- ggplot(subset(sla_all_soil.nosla2)) +
   aes(x=(Ow.mean), y=(CN)) +
   geom_point() +
@@ -348,8 +475,16 @@ pdf("soilCN_panel.pdf", width = 10, height = 10, useDingbats=FALSE) # Open a new
 grid.arrange(plot7, plot4, plot5, ncol=3, heights=c(3,3,3), widths=c(3,3,3)) # Write the grid.arrange in the file
 dev.off() # Close the file
 
+# QUESTION: Is there a relationship between soil C:N and soil moisture?
+plot(CN ~ Ow.mean, data = sla_soil.ag2[sla_soil.ag2$species2 == "Spruce",])
+lm8 <- (lm(CN ~ Ow.mean, data = sla_soil.ag2[sla_soil.ag2$species2 == "Spruce",]))
+summary(lm8)
+par(mfrow = c(2, 2))
+plot(lm8)
+
 # -----------------------------------------------------------------------------
 ## Figure: ALD vs. soil moisture
+# -----------------------------------------------------------------------------
 plot6 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) + ###4 x 4inches for pdf export
   aes(x=(ald_cm), y=(Ow.mean)) +
   geom_point() +
@@ -364,7 +499,6 @@ plot6 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) + ###4 x 4inches f
         legend.text = element_text(size=18),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
-
 
 ylab(expression(SLA~(cm^2~g^{-1})))
 
@@ -388,8 +522,37 @@ grid.arrange(plot6, plot7, ncol=2, heights=c(3,3), widths=c(3,3))
 #print(plot6)
 #graphics.off()
 
+# QUESTION: Is there a relationship between soil moisture and ALD? Use soil data set (sla_soil.ag.alder/spruce).
+plot(Ow.mean ~ ald_cm, data = sla_all_soil.nosla2.6cm)
+
+lm7 <- (lm(Ow.mean ~ ald_cm, data = sla_all_soil.nosla2.6cm))
+summary(lm7)
+par(mfrow = c(2, 2))
+plot(lm7)
+
+shapiro.test(sla_all_soil.nosla2.6cm$Ow.mean)
+
+t.test(sla_all_soil.nosla2.6cm$Ow.mean ~ sla_all_soil.nosla2.6cm$ald_class2)
+#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
+#alternative="less" or alternative="greater" option to specify a one tailed test.
+
+var.test(sla_all_soil.nosla2.6cm$Ow.mean[sla_all_soil.nosla2.6cm$ald_class2=="Shallow"],
+         sla_all_soil.nosla2.6cm$Ow.mean[sla_all_soil.nosla2.6cm$ald_class2=="Deep"])
+
+##### Testing segmented regression
+seg.mod.ald2 <- segmented(lm7, seg.Z = ~ald_cm, psi=105)
+summary(seg.mod.ald2)
+seg.mod.ald2$psi
+slope(seg.mod.ald2)
+my.fitted3 <- fitted(seg.mod.ald2)
+my.model3 <- data.frame(Slope = sla_all_soil.nosla2.6cm$ald_cm, ALD = my.fitted3)
+ggplot(my.model3, aes(x=Slope, y=ALD)) + geom_line()
+
+davies.test(lm7, seg.Z = ~ald_cm, k=3)
+
 # -----------------------------------------------------------------------------
 ## Figure: SLA vs. C:N
+# -----------------------------------------------------------------------------
 ggplot(subset(sla_soil.ag.alder)) +
   aes(x=(CN), y=(SLA.mean)) +
   geom_point() +
@@ -420,7 +583,22 @@ ggplot(subset(sla_soil.ag.spruce)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
+# QUESTION: Is there a relationship between SLA and nutrient availability (soil C:N)? Use soil data set (sla_soil.ag.alder/spruce).
+plot(SLA.mean ~ CN, data = sla_soil.ag.alder)
+lm9 <- (lm(SLA.mean ~ CN, data = sla_soil.ag.alder))
+summary(lm9)
+par(mfrow = c(2, 2))
+plot(lm9)
+
+plot(SLA.mean ~ CN, data = sla_soil.ag.spruce)
+lm10 <- (lm(SLA.mean ~ CN, data = sla_soil.ag.spruce))
+summary(lm10)
+par(mfrow = c(2, 2))
+plot(lm10)
+
+# -----------------------------------------------------------------------------
 ## Figure: SLA vs. soil moisture
+# -----------------------------------------------------------------------------
 ggplot(subset(sla_soil.ag.alder)) +
   aes(x=(Ow.mean), y=(SLA.mean)) +
   geom_point() +
@@ -451,17 +629,44 @@ ggplot(subset(sla_soil.ag.spruce)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
-
-########
-# rbind sla_soil.ag.alder and sla_soil.ag.spruce
-sla_soil.ag.both <- rbind(sla_soil.ag.alder, sla_soil.ag.spruce)
-########
-
 plot8 <- ggplot(sla_soil.ag.both) +
   aes(x=Ow.mean, y=SLA.mean) +
   geom_point() +
   #geom_smooth(method="lm") +
   stat_smooth(method = "lm", formula = y ~ poly(x, 2), size = 1) + #http://statistics.ats.ucla.edu/stat/r/faq/smooths.htm
+  facet_wrap(~species2, scales="free") +
+  xlab("Soil moisture") + ylab(expression(SLA~(cm^2~g^{-1}))) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(size=18))
+
+mblm.alder <- mblm(SLA.mean ~ Ow.mean, data = sla_soil.ag.alder)
+summary(mblm.alder)
+summary.lm(mblm.alder)
+
+mblm.spruce <- mblm(SLA.mean ~ Ow.mean, data = sla_soil.ag.spruce)
+summary(mblm.spruce)
+summary.lm(mblm.spruce)
+
+sen <- function(..., weights = NULL) {
+  mblm::mblm(...)
+}
+
+# Theil-Sen plot 8
+plot8b <- ggplot(sla_soil.ag.both) +
+  aes(x=Ow.mean, y=SLA.mean) +
+  geom_point() +
+  #geom_smooth(method="lm") +
+  #stat_smooth(method = "lm", formula = y ~ poly(x, 2), size = 1) + #http://statistics.ats.ucla.edu/stat/r/faq/smooths.htm
+  #geom_abline(intercept = coef(mblm.alder)[1], slope = coef(mblm.alder)[2]) +
+  #geom_line(y = predict(mblm.spruce)) +
+  stat_smooth(method=sen) +
   facet_wrap(~species2, scales="free") +
   xlab("Soil moisture") + ylab(expression(SLA~(cm^2~g^{-1}))) +
   theme_bw() +
@@ -493,8 +698,130 @@ plot9 <- ggplot(sla_soil.ag.both) +
 grid.newpage()
 grid.draw(rbind(ggplotGrob(plot8), ggplotGrob(plot9), size = "last")) ###8 x 8inches for pdf export
 
+
+# QUESTION: Is there a relationship between SLA and soil moisture? Use soil data set (sla_soil.ag.alder/spruce).
+plot(SLA.mean ~ Ow.mean, data = sla_soil.ag.alder)
+lm11 <- (lm(SLA.mean ~ Ow.mean, data = sla_soil.ag.alder))
+summary(lm11)
+par(mfrow = c(2, 2))
+plot(lm11)
+AIC(lm11)
+AICc(lm11) #AICc (small sample size corrected)
+
+mblm.alder <- mblm(SLA.mean ~ Ow.mean, data = sla_soil.ag.alder)
+summary(mblm.alder)
+
+cooksd <- cooks.distance(lm11)
+sample_size <- nrow(sla_soil.ag.alder)
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+
+p1 <- ggplot(lm11, aes(.fitted, .resid)) +
+  geom_point() + stat_smooth(method="loess") + geom_hline(yintercept=0, col="red", linetype="dashed") +
+  xlab("Fitted values")+ylab("Residuals") +
+  #  ggtitle("Residual vs Fitted Plot")+theme_bw() +
+  theme_bw() +
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+
+plot(SLA.mean ~ Ow.mean, data = sla_soil.ag.spruce)
+lm12 <- (lm(SLA.mean ~ Ow.mean, data = sla_soil.ag.spruce))
+summary(lm12)
+par(mfrow = c(2, 2))
+plot(lm12)
+AIC(lm12)
+AICc(lm12) #AICc (small sample size corrected)
+
+mblm.spruce <- mblm(SLA.mean ~ Ow.mean, data = sla_soil.ag.spruce)
+summary(mblm.spruce)
+
+cooksd <- cooks.distance(lm12)
+sample_size <- nrow(sla_soil.ag.spruce)
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+
+
+p2 <- ggplot(lm12, aes(.fitted, .resid)) +
+  geom_point() + stat_smooth(method="loess") + geom_hline(yintercept=0, col="red", linetype="dashed") +
+  xlab("Fitted values")+ylab("Residuals") +
+  #  ggtitle("Residual vs Fitted Plot")+theme_bw() +
+  theme_bw() +
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        plot.title = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size=18),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+grid.arrange(p1, p2, ncol=2, heights=c(3,3), widths=c(3,3)) ###8 x 9inches for pdf export
+
+
+##### Testing segmented regression for breakpoints
+# https://rpubs.com/MarkusLoew/12164
+# https://climateecology.wordpress.com/2012/08/19/r-for-ecologists-putting-together-a-piecewise-regression/
+# davies.test tests for a non-zero difference-in-slope parameter of a segmented relationship. 
+
+lm11 <- (lm(SLA.mean ~ Ow.mean, data = sla_soil.ag.alder))
+lm12 <- (lm(SLA.mean ~ Ow.mean, data = sla_soil.ag.spruce))
+
+# alder
+seg.mod.alder <- segmented(lm11, seg.Z = ~Ow.mean, psi=0.7)
+summary(seg.mod.alder)
+seg.mod.alder$psi
+slope(seg.mod.alder)
+my.fitted <- fitted(seg.mod.alder)
+my.model <- data.frame(Ow = sla_soil.ag.alder$Ow.mean, SLA = my.fitted)
+ggplot(my.model, aes(x=Ow, y=SLA)) + geom_line()
+davies.test(lm11, seg.Z = ~Ow.mean, k=2)
+
+# spruce
+seg.mod.spruce <- segmented(lm12, seg.Z = ~Ow.mean, psi=0.7)
+summary(seg.mod.spruce)
+seg.mod.spruce$psi
+slope(seg.mod.spruce)
+my.fitted2 <- fitted(seg.mod.spruce)
+my.model2 <- data.frame(Ow = sla_soil.ag.spruce$Ow.mean, SLA = my.fitted2)
+ggplot(my.model2, aes(x=Ow, y=SLA)) + geom_line()
+davies.test(lm12, seg.Z = ~Ow.mean, k=2)
+
+##### Quadratic regression
+# alder
+Ow.mean2 <- sla_soil.ag.alder$Ow.mean^2
+quad.mod1 <- (lm(SLA.mean ~ Ow.mean + Ow.mean2, data = sla_soil.ag.alder))
+summary(quad.mod1)
+AIC(quad.mod1)
+AICc(quad.mod1)
+
+moisture.values <- seq(0, 1, 0.05)
+predicted.sla.alder <- predict(quad.mod1, list(Ow.mean = moisture.values, Ow.mean2 = moisture.values^2, data=sla_soil.ag.alder))
+plot(SLA.mean ~ Ow.mean, pch=16, xlab = "Ow.mean", ylab = "SLA.mean", cex.lab = 1.3, col = "blue", data=sla_soil.ag.alder)
+lines(moisture.values, predicted.sla.alder, col = "darkgreen", lwd = 3)
+
+
+# spruce
+Ow.mean2b <- sla_soil.ag.spruce$Ow.mean^2
+quad.mod2 <- (lm(SLA.mean ~ Ow.mean + Ow.mean2b, data = sla_soil.ag.spruce))
+summary(quad.mod2)
+AIC(quad.mod2)
+AICc(quad.mod2)
+
+moisture.values <- seq(0, 1, 0.05)
+predicted.sla.spruce <- predict(quad.mod2, list(Ow.mean = moisture.values, Ow.mean2b = moisture.values^2, data=sla_soil.ag.spruce))
+plot(SLA.mean ~ Ow.mean, pch=16, xlab = "Ow.mean", ylab = "SLA.mean", cex.lab = 1.3, col = "blue", data=sla_soil.ag.spruce)
+lines(moisture.values, predicted.sla.spruce, col = "darkgreen", lwd = 3)
+
 # -----------------------------------------------------------------------------
 ## Figure: SLA vs. ALD
+# -----------------------------------------------------------------------------
 ggplot(subset(sla_all, Species %in% "ALSP")) + #Species %in% c("PIMA","PIGL")
   aes(x=(ald_cm), y=(SLA)) + #, color=ald_class2
   geom_point() +
@@ -552,8 +879,61 @@ ggplot(subset(sla_all.ag.spruce)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
+# QUESTION: Is there a relationship between SLA and ALD?  Use full dataset (sla_all.ag.alder/spruce).
+plot(SLA.mean ~ ald_cm, data = sla_all.ag.alder)
+lm17 <- (lm(SLA.mean ~ ald_cm, data = sla_all.ag.alder))
+summary(lm17)
+par(mfrow = c(2, 2))
+plot(lm17)
 
+shapiro.test(sla_all.ag.alder$SLA.mean)
+
+t.test(sla_all.ag.alder$SLA.mean ~ sla_all.ag.alder$ald_class2)
+#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
+#alternative="less" or alternative="greater" option to specify a one tailed test.
+
+var.test(sla_all.ag.alder$SLA.mean[sla_all.ag.alder$ald_class2=="Shallow"],
+         sla_all.ag.alder$SLA.mean[sla_all.ag.alder$ald_class2=="Deep"])
+
+#Spearman, SLA vs. ALD (alder)
+cor.test(sla_all.ag.alder$SLA.mean, sla_all.ag.alder$ald_cm, method="spearman", exact=FALSE)
+
+cooksd <- cooks.distance(lm17)
+sample_size <- nrow(sla_all.ag.alder)
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+
+
+
+plot(SLA.mean ~ ald_cm, data = sla_all.ag.spruce)
+lm18 <- (lm(SLA.mean ~ ald_cm, data = sla_all.ag.spruce))
+summary(lm18)
+par(mfrow = c(2, 2))
+plot(lm18)
+
+shapiro.test(sla_all.ag.spruce$SLA.mean)
+
+t.test(sla_all.ag.spruce$SLA.mean ~ sla_all.ag.spruce$ald_class2)
+#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
+#alternative="less" or alternative="greater" option to specify a one tailed test.
+
+var.test(sla_all.ag.spruce$SLA.mean[sla_all.ag.spruce$ald_class2=="Shallow"],
+         sla_all.ag.spruce$SLA.mean[sla_all.ag.spruce$ald_class2=="Deep"])
+
+
+#Spearman, SLA vs. ALD (spruce)
+cor.test(sla_all.ag.spruce$SLA.mean, sla_all.ag.spruce$ald_cm, method="spearman", exact=FALSE)
+
+cooksd <- cooks.distance(lm18)
+sample_size <- nrow(sla_all.ag.spruce)
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+
+# -----------------------------------------------------------------------------
 ## Figure: SLA vs. Slope
+# -----------------------------------------------------------------------------
 ggplot(subset(sla_all.ag.alder)) +
   aes(x=SlopePercent, y=SLA.mean) +
   geom_point() +
@@ -583,12 +963,6 @@ ggplot(subset(sla_all.ag.spruce)) +
         legend.text = element_text(size=22),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
-
-
-########
-# rbind sla_all.ag.alder and sla_all.ag.spruce
-sla_all.ag.both <- rbind(sla_all.ag.alder, sla_all.ag.spruce)
-########
 
 plot10 <- ggplot(sla_all.ag.both) + ###4 x 8inches for pdf export
   aes(x=ald_cm, y=SLA.mean) +
@@ -625,8 +999,23 @@ plot11 <- ggplot(sla_all.ag.both) +
 
 grid.newpage()
 grid.draw(rbind(ggplotGrob(plot10), ggplotGrob(plot11), size = "last"))
+
+# QUESTION: Indirect: Is there a relationship between slope and SLA? Use full dataset (sla_all.ag.alder/spruce).
+plot(SLA.mean ~ SlopePercent, data = sla_all.ag.alder)
+lm19 <- (lm(SLA.mean ~ SlopePercent, data = sla_all.ag.alder))
+summary(lm19)
+par(mfrow = c(2, 2))
+plot(lm19)
+
+plot(SLA.mean ~ SlopePercent, data = sla_all.ag.spruce)
+lm20 <- (lm(SLA.mean ~ SlopePercent, data = sla_all.ag.spruce))
+summary(lm20)
+par(mfrow = c(2, 2))
+plot(lm20)
+
 # -----------------------------------------------------------------------------
 ## Figure: SLA vs. NPP
+# -----------------------------------------------------------------------------
 ggplot(subset(sla_all, Species %in% "ALSP")) + #Species %in% c("PIMA","PIGL")
   aes(x=(SLA), y=(npp_gC)) +
   geom_point(aes(color=ald_class2)) +
@@ -660,7 +1049,7 @@ ggplot(subset(sla_all.ag.alder)) +
 
 ggplot(subset(sla_all.ag.spruce)) +
   aes(x=log(SLA.mean), y=log(npp_gC)) +
-  geom_point(aes()) + #color=ald_class2
+  geom_point(aes()) +
   geom_smooth(method="lm") +
   ggtitle("SLA vs. NPP (spruce)") +
   xlab("Log(SLA)") + ylab("Log(NPP)") +
@@ -673,24 +1062,7 @@ ggplot(subset(sla_all.ag.spruce)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
 
-ggplot(subset(sla_all.ag)) + #SLA vs. NPP, for Ben (log transformed)
-  aes(x=log(SLA.mean), y=log(npp_gC)) +
-  geom_point(aes()) +
-  geom_smooth(method="lm") +
-  ggtitle("SLA vs. NPP") +
-  xlab("Log(SLA)") + ylab("Log(NPP)") +
-  theme_bw() +
-  theme(axis.text = element_text(size = 18),
-        axis.title = element_text(size = 18),
-        plot.title = element_text(size = 18),
-        legend.title = element_text(size = 18),
-        legend.text = element_text(size=18),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        strip.text = element_text(size=18)) +
-  facet_wrap(~species2, scales="free")
-
-ggplot(subset(sla_all.ag)) + #SLA vs. NPP, for Ben (not transformed)
+ggplot(subset(sla_all.ag)) + #not transformed
   aes(x=(SLA.mean), y=(npp_gC)) +
   geom_point(aes()) +
   geom_smooth(method="lm") +
@@ -724,9 +1096,22 @@ ggplot(sla_all.ag.both) +
         panel.grid.minor = element_blank(),
         strip.text = element_text(size=18))
 
-# -----------------------------------------------------------------------------
+# NPP for broadleaf (Alder, Birch)
+sla.bepa.interp <- read.csv("CPCRW_Data_2014/CPCRW_NPP/CPCRW_2014_NPP_Linear_Interp.bepa.csv")
+sla.bepa.interp$Position.E.to.W_m[sla.bepa.interp$Position.E.to.W_m==70] <- 72
+sla.bepa.merge <- merge(sla_all.ag.alder, sla.bepa.interp)
+
+ggplot(subset(sla.bepa.merge)) +
+  aes(x=log(npp_gC), y=log(SLA.mean)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(subset(sla.bepa.merge)) +
+  aes(x=log(npp_gC_m2), y=log(SLA.mean)) +
+  geom_point() +
+  geom_smooth()
+
 # NPP for black spruce (PIMA)
-# -----------------------------------------------------------------------------
 sla.spruce.interp <- read.csv("CPCRW_Data_2014/CPCRW_NPP/CPCRW_2014_NPP_Linear_Interp.pima.csv")
 sla.spruce.55 <- subset(sla_all.ag.spruce, Position.E.to.W_m < 60)
 sla.spruce.55.merge <- merge(sla.spruce.55, sla.spruce.interp)
@@ -768,9 +1153,8 @@ plot12 <- ggplot(subset(sla.spruce.55.merge, Species %in% "PIMA")) +
 plot12b <- ggplot(subset(sla.spruce.55.merge, Species %in% "PIMA")) +
   aes(y=(npp_gC_m2), x=(SLA.mean)) +
   geom_point() +
-  geom_smooth(method="lm") +
-  #  ggtitle("Spruce only") +
-#  xlab("Spruce SLA") + ylab("Spruce NPP") +
+  #geom_smooth(method="lm") +
+  stat_smooth(method=sen) +
   xlab(expression(Spruce~SLA~(cm^2~g^{-1}))) + ylab(expression(Spruce~NPP~(g~C~m^2~yr^-1))) +
   theme_bw() +
   theme(axis.text = element_text(size = 18),
@@ -783,27 +1167,42 @@ plot12b <- ggplot(subset(sla.spruce.55.merge, Species %in% "PIMA")) +
 
 #R-sq:
 summary(lm(log(SLA.mean) ~ log(npp_gC_m2), data=sla.spruce.55.merge))
-summary(lm((SLA.mean) ~ (npp_gC_m2), data=sla.spruce.55.merge))
+summary(lm(SLA.mean) ~ (npp_gC_m2), data=sla.spruce.55.merge)
+
+# QUESTION: Is there a relationship between SLA and NPP? Use full dataset (sla_all.ag.alder/spruce).
+plot(npp_gC ~ SLA.mean, data = sla_all.ag.alder)
+lm15 <- (lm(log(npp_gC) ~ log(SLA.mean), data = sla_all.ag.alder))
+summary(lm15)
+par(mfrow = c(2, 2))
+plot(lm15)
+
+plot(npp_gC ~ SLA.mean, data = sla_all.ag.spruce)
+lm16 <- (lm(log(npp_gC) ~ log(SLA.mean), data = sla_all.ag.spruce))
+summary(lm16)
+par(mfrow = c(2, 2))
+plot(lm16)
+
+plot(npp_gC_m2 ~ SLA.mean, data = subset(sla.spruce.55.merge, Species %in% "PIMA"))
+lm16b <- lm(npp_gC_m2 ~ SLA.mean, data = sla.spruce.55.merge)
+summary(lm16b)
+par(mfrow = c(2, 2))
+plot(lm16)
+
+# Cook's
+cooksd <- cooks.distance(lm16b)
+sample_size <- nrow(sla.spruce.55.merge)
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+
+# mblm
+mblm.sprucenpp.sla <- mblm(npp_gC_m2 ~ SLA.mean, data = sla.spruce.55.merge)
+summary(mblm.sprucenpp.sla)
+summary.lm(mblm.sprucenpp.sla)
 
 # -----------------------------------------------------------------------------
-# NPP for broadleaf (Alder, Birch)
+# FIGURE: NPP vs. Soil C:N
 # -----------------------------------------------------------------------------
-sla.bepa.interp <- read.csv("CPCRW_Data_2014/CPCRW_NPP/CPCRW_2014_NPP_Linear_Interp.bepa.csv")
-sla.bepa.interp$Position.E.to.W_m[sla.bepa.interp$Position.E.to.W_m==70] <- 72
-sla.bepa.merge <- merge(sla_all.ag.alder, sla.bepa.interp)
-
-ggplot(subset(sla.bepa.merge)) +
-  aes(x=log(npp_gC), y=log(SLA.mean)) +
-  geom_point() +
-  geom_smooth()
-
-ggplot(subset(sla.bepa.merge)) +
-  aes(x=log(npp_gC_m2), y=log(SLA.mean)) +
-  geom_point() +
-  geom_smooth()
-
-# -----------------------------------------------------------------------------
-# NPP vs. Soil C:N
 plot13 <- ggplot(subset(sla_all_soil.nosla2, Depth_cm %in% 6)) +
   aes(x=log(CN), y=log(npp_gC)) +
   geom_point() +
@@ -893,7 +1292,7 @@ tmp2 <- lapply(sla_all.nosla[,c(4:10)], function(x) rbind(
 sla_all.ag.summary <- data.frame(tmp2)
 
 # -----------------------------------------------------------------------------
-## 1. ASSESS VARIATION WITHIN AND AMONG INDIVIDUAL TREES (NESTED LME WITH LEAVES)
+## ASSESS VARIATION WITHIN AND AMONG INDIVIDUAL TREES (NESTED LME WITH LEAVES)
 # -----------------------------------------------------------------------------
 # Assess variation within individual trees (nesting with lme, e.g. Messier et al. 2010)
 varcomp.LME.alder <- varcomp(lme(log(SLA) ~ 1, random = ~1|Tree, data=sla_alder, na.action=na.omit),1)
@@ -906,367 +1305,7 @@ varcomp.LME.spruce
 #varcomp.LME.all
 
 # -----------------------------------------------------------------------------
-## 2. LINEAR MODELS WITH NO NESTING (USES AVERAGES OF REPLICATES)
-# -----------------------------------------------------------------------------
-# Linear models according to SLA schematic. For each species.
-# QUESTION: Is there a relationship between slope and ALD? Use full dataset (sla_all.ag.spruce).
-
-plot(ald_cm ~ SlopePercent, data=sla_all.nosla)
-lm1 <- lm(ald_cm ~ SlopePercent, data = sla_all.nosla)
-summary(lm1)
-par(mfrow = c(2, 2))
-plot(lm1)
-
-##### Segmented regression
-seg.mod.ald <- segmented(lm1, seg.Z = ~SlopePercent, psi=20)
-summary(seg.mod.ald)
-seg.mod.ald$psi
-slope(seg.mod.ald)
-my.fitted3 <- fitted(seg.mod.ald)
-my.model3 <- data.frame(Slope = sla_all.nosla$SlopePercent, ALD = my.fitted3)
-ggplot(my.model3, aes(x=Slope, y=ALD)) + geom_line()
-
-
-
-
-cor.test(sla_all.nosla$ald_cm, sla_all.nosla$SlopePercent, method="spearman", exact=FALSE)
-spearman_test(sla_all.nosla$ald_cm ~ sla_all.nosla$SlopePercent, distribution="asymptotic", ties.method="mid-ranks")
-
-#Subset with slope < 23 to look at ald < 151 (threshold)
-sla_all.ag.unique.lowslope <- subset(sla_all.nosla, SlopePercent < 23)
-plot(ald_cm ~ SlopePercent, data=sla_all.ag.unique.lowslope)
-summary(lm(ald_cm ~ SlopePercent, data = sla_all.ag.unique.lowslope))
-
-cor.test(sla_all.ag.unique.lowslope$ald_cm, sla_all.ag.unique.lowslope$SlopePercent, method="spearman", exact=FALSE)
-spearman_test(sla_all.ag.unique.lowslope$ald_cm ~ sla_all.ag.unique.lowslope$SlopePercent, distribution="asymptotic", ties.method="mid-ranks")
-summary(lm(ald_cm ~ SlopePercent, data=sla_all.ag.unique.lowslope))
-
-#Since ALD has an upper lmit of 150cm (>150 keyed to 151 in data), need to to a Tobit regression to reflect this upper limit.
-#http://www.ats.ucla.edu/stat/r/dae/tobit.htm
-#http://www1.karlin.mff.cuni.cz/~pesta/NMFM404/tobit.html#Tobit_model
-#http://www.rdocumentation.org/packages/VGAM/functions/tobit
-#http://stackoverflow.com/questions/19014122/pseudo-r2-using-vglm
-#https://cran.r-project.org/web/packages/censReg/vignettes/censReg.pdf
-ald.slope.tobit <- vglm(ald_cm ~ SlopePercent, tobit(Upper=151), data=sla_all.nosla)
-summary(ald.slope.tobit)
-ctable <- coef(summary(ald.slope.tobit))
-pvals <- 2 * pt(abs(ctable[, "z value"]), df.residual(ald.slope.tobit), lower.tail=FALSE)
-cbind(ctable, pvals)  
-#To examine how well our model fits the data; plot of residuals to assess their absolute & relative (pearson) values and assumptions
-sla_all.nosla$yhat <- fitted(ald.slope.tobit)[,1]
-sla_all.nosla$rr <- resid(ald.slope.tobit, type = "response")
-sla_all.nosla$rp <- resid(ald.slope.tobit, type = "pearson")[,1]
-
-par(mfcol = c(2, 3))
-with(sla_all.nosla, {
-  plot(yhat, rr, main = "Fitted vs Residuals")
-  qqnorm(rr)
-  plot(yhat, rp, main = "Fitted vs Pearson Residuals")
-  qqnorm(rp)
-  plot(ald_cm, rp, main = "Actual vs Pearson Residuals")
-  plot(ald_cm, yhat, main = "Actual vs Fitted")
-})
-
-summary(lm(yhat ~ ald_cm, data=sla_all.nosla))
-(r <- with(sla_all.nosla, cor(yhat, ald_cm)))
-r^2
-plot(yhat ~ ald_cm, data=sla_all.nosla)
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between ALD and the depth of the moss-organic layer?
-sla_all_soil.nosla2.6cm <- subset(sla_all_soil.nosla2, Depth_cm %in% 6)
-
-plot(MossDepth ~ ald_cm, data=sla_all_soil.nosla2.6cm)
-lm2 <- (lm(MossDepth ~ ald_cm, sla_all_soil.nosla2.6cm))
-summary(lm2)
-par(mfrow = c(2, 2))
-plot(lm2)
-
-shapiro.test(sla_all_soil.nosla2.6cm$ald_cm) #ald not normal distribution
-shapiro.test(sla_all_soil.nosla2.6cm$MossDepth)
-
-t.test(sla_all_soil.nosla2.6cm$MossDepth ~ sla_all_soil.nosla2.6cm$ald_class2)
-#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
-#alternative="less" or alternative="greater" option to specify a one tailed test.
-
-var.test(sla_all_soil.nosla2.6cm$MossDepth[sla_all_soil.nosla2.6cm$ald_class2=="Shallow"],
-         sla_all_soil.nosla2.6cm$MossDepth[sla_all_soil.nosla2.6cm$ald_class2=="Deep"])
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between soil temperature and moss depth? Use soil data set (sla_soil.ag.alder/spruce).
-plot(Temperature ~ MossDepth, data = sla_soil.ag.spruce)
-lm4 <- (lm(Temperature ~ MossDepth, data = sla_soil.ag.spruce))
-summary(lm4)
-par(mfrow = c(2, 2))
-plot(lm4)
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between soil temperature and ALD? Use soil data set (sla_soil.ag.alder/spruce).
-plot(Temperature ~ ald_cm, data = sla_soil.ag.spruce)
-lm3 <- (lm(Temperature ~ ald_cm, data = sla_soil.ag.spruce))
-summary(lm3)
-par(mfrow = c(2, 2))
-plot(lm3)
-
-shapiro.test(sla_all_soil.nosla2.6cm$Temperature)
-
-t.test(sla_all_soil.nosla2.6cm$Temperature ~ sla_all_soil.nosla2.6cm$ald_class2)
-#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
-#alternative="less" or alternative="greater" option to specify a one tailed test.
-
-var.test(sla_all_soil.nosla2.6cm$Temperature[sla_all_soil.nosla2.6cm$ald_class2=="Shallow"],
-         sla_all_soil.nosla2.6cm$Temperature[sla_all_soil.nosla2.6cm$ald_class2=="Deep"])
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between soil C:N and soil temperature?
-plot(CN ~ Temperature, data = sla_all_soil.nosla2)
-lm5 <- (lm(CN ~ Temperature, data = sla_all_soil.nosla2))
-summary(lm5)
-par(mfrow = c(2, 2))
-plot(lm5)
-
-# -----------------------------------------------------------------------------
-# QUESTION: Indirect: Is there a relationship between soil C:N and the depth of the moss-organic layer? Use soil data set (sla_soil.ag.alder/spruce).
-plot(CN ~ MossDepth, data = sla_all_soil.nosla2.6cm)
-lm6 <- (lm(CN ~ MossDepth, data = sla_all_soil.nosla2.6cm))
-summary(lm6)
-par(mfrow = c(2, 2))
-plot(lm6)
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between soil moisture and ALD? Use soil data set (sla_soil.ag.alder/spruce).
-plot(Ow.mean ~ ald_cm, data = sla_all_soil.nosla2.6cm)
-
-lm7 <- (lm(Ow.mean ~ ald_cm, data = sla_all_soil.nosla2.6cm))
-summary(lm7)
-par(mfrow = c(2, 2))
-plot(lm7)
-
-shapiro.test(sla_all_soil.nosla2.6cm$Ow.mean)
-
-t.test(sla_all_soil.nosla2.6cm$Ow.mean ~ sla_all_soil.nosla2.6cm$ald_class2)
-#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
-#alternative="less" or alternative="greater" option to specify a one tailed test.
-
-var.test(sla_all_soil.nosla2.6cm$Ow.mean[sla_all_soil.nosla2.6cm$ald_class2=="Shallow"],
-         sla_all_soil.nosla2.6cm$Ow.mean[sla_all_soil.nosla2.6cm$ald_class2=="Deep"])
-
-##### Testing segmented regression
-seg.mod.ald2 <- segmented(lm7, seg.Z = ~ald_cm, psi=105)
-summary(seg.mod.ald2)
-seg.mod.ald2$psi
-slope(seg.mod.ald2)
-my.fitted3 <- fitted(seg.mod.ald2)
-my.model3 <- data.frame(Slope = sla_all_soil.nosla2.6cm$ald_cm, ALD = my.fitted3)
-ggplot(my.model3, aes(x=Slope, y=ALD)) + geom_line()
-
-davies.test(lm7, seg.Z = ~ald_cm, k=3)
-
-
-
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between soil C:N and soil moisture?
-plot(CN ~ Ow.mean, data = sla_soil.ag2[sla_soil.ag2$species2 == "Spruce",])
-lm8 <- (lm(CN ~ Ow.mean, data = sla_soil.ag2[sla_soil.ag2$species2 == "Spruce",]))
-summary(lm8)
-par(mfrow = c(2, 2))
-plot(lm8)
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between SLA and nutrient availability (via soil C:N)? Use soil data set (sla_soil.ag.alder/spruce).
-plot(SLA.mean ~ CN, data = sla_soil.ag.alder)
-lm9 <- (lm(SLA.mean ~ CN, data = sla_soil.ag.alder))
-summary(lm9)
-par(mfrow = c(2, 2))
-plot(lm9)
-
-plot(SLA.mean ~ CN, data = sla_soil.ag.spruce)
-lm10 <- (lm(SLA.mean ~ CN, data = sla_soil.ag.spruce))
-summary(lm10)
-par(mfrow = c(2, 2))
-plot(lm10)
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between SLA and soil moisture? Use soil data set (sla_soil.ag.alder/spruce).
-plot(SLA.mean ~ Ow.mean, data = sla_soil.ag.alder)
-lm11 <- (lm(SLA.mean ~ Ow.mean, data = sla_soil.ag.alder))
-summary(lm11)
-par(mfrow = c(2, 2))
-plot(lm11)
-AIC(lm11)
-AICc(lm11) #AICc (small sample size corrected)
-
-p1 <- ggplot(lm11, aes(.fitted, .resid)) +
-  geom_point() + stat_smooth(method="loess") + geom_hline(yintercept=0, col="red", linetype="dashed") +
-  xlab("Fitted values")+ylab("Residuals") +
-#  ggtitle("Residual vs Fitted Plot")+theme_bw() +
-  theme_bw() +
-  theme(axis.text = element_text(size = 18),
-        axis.title = element_text(size = 18),
-        plot.title = element_text(size = 18),
-        legend.title = element_text(size = 18),
-        legend.text = element_text(size=18),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
-
-plot(SLA.mean ~ Ow.mean, data = sla_soil.ag.spruce)
-lm12 <- (lm(SLA.mean ~ Ow.mean, data = sla_soil.ag.spruce))
-summary(lm12)
-par(mfrow = c(2, 2))
-plot(lm12)
-AIC(lm12)
-AICc(lm12) #AICc (small sample size corrected)
-
-p2 <- ggplot(lm12, aes(.fitted, .resid)) +
-  geom_point() + stat_smooth(method="loess") + geom_hline(yintercept=0, col="red", linetype="dashed") +
-  xlab("Fitted values")+ylab("Residuals") +
-  #  ggtitle("Residual vs Fitted Plot")+theme_bw() +
-  theme_bw() +
-  theme(axis.text = element_text(size = 18),
-        axis.title = element_text(size = 18),
-        plot.title = element_text(size = 18),
-        legend.title = element_text(size = 18),
-        legend.text = element_text(size=18),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
-grid.arrange(p1, p2, ncol=2, heights=c(3,3), widths=c(3,3)) ###8 x 9inches for pdf export
-
-
-##### Testing segmented regression for breakpoints
-# https://rpubs.com/MarkusLoew/12164
-# https://climateecology.wordpress.com/2012/08/19/r-for-ecologists-putting-together-a-piecewise-regression/
-# davies.test tests for a non-zero difference-in-slope parameter of a segmented relationship. 
-
-lm11 <- (lm(SLA.mean ~ Ow.mean, data = sla_soil.ag.alder))
-lm12 <- (lm(SLA.mean ~ Ow.mean, data = sla_soil.ag.spruce))
-
-# alder
-seg.mod.alder <- segmented(lm11, seg.Z = ~Ow.mean, psi=0.7)
-summary(seg.mod.alder)
-seg.mod.alder$psi
-slope(seg.mod.alder)
-my.fitted <- fitted(seg.mod.alder)
-my.model <- data.frame(Ow = sla_soil.ag.alder$Ow.mean, SLA = my.fitted)
-ggplot(my.model, aes(x=Ow, y=SLA)) + geom_line()
-davies.test(lm11, seg.Z = ~Ow.mean, k=2)
-
-# spruce
-seg.mod.spruce <- segmented(lm12, seg.Z = ~Ow.mean, psi=0.7)
-summary(seg.mod.spruce)
-seg.mod.spruce$psi
-slope(seg.mod.spruce)
-my.fitted2 <- fitted(seg.mod.spruce)
-my.model2 <- data.frame(Ow = sla_soil.ag.spruce$Ow.mean, SLA = my.fitted2)
-ggplot(my.model2, aes(x=Ow, y=SLA)) + geom_line()
-davies.test(lm12, seg.Z = ~Ow.mean, k=2)
-
-
-
-
-##### Quadratic regression
-# alder
-Ow.mean2 <- sla_soil.ag.alder$Ow.mean^2
-quad.mod1 <- (lm(SLA.mean ~ Ow.mean + Ow.mean2, data = sla_soil.ag.alder))
-summary(quad.mod1)
-AIC(quad.mod1)
-AICc(quad.mod1)
-
-moisture.values <- seq(0, 1, 0.05)
-predicted.sla.alder <- predict(quad.mod1, list(Ow.mean = moisture.values, Ow.mean2 = moisture.values^2, data=sla_soil.ag.alder))
-plot(SLA.mean ~ Ow.mean, pch=16, xlab = "Ow.mean", ylab = "SLA.mean", cex.lab = 1.3, col = "blue", data=sla_soil.ag.alder)
-lines(moisture.values, predicted.sla.alder, col = "darkgreen", lwd = 3)
-
-
-# spruce
-Ow.mean2b <- sla_soil.ag.spruce$Ow.mean^2
-quad.mod2 <- (lm(SLA.mean ~ Ow.mean + Ow.mean2b, data = sla_soil.ag.spruce))
-summary(quad.mod2)
-AIC(quad.mod2)
-AICc(quad.mod2)
-
-moisture.values <- seq(0, 1, 0.05)
-predicted.sla.spruce <- predict(quad.mod2, list(Ow.mean = moisture.values, Ow.mean2b = moisture.values^2, data=sla_soil.ag.spruce))
-plot(SLA.mean ~ Ow.mean, pch=16, xlab = "Ow.mean", ylab = "SLA.mean", cex.lab = 1.3, col = "blue", data=sla_soil.ag.spruce)
-lines(moisture.values, predicted.sla.spruce, col = "darkgreen", lwd = 3)
-
-
-
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between SLA and ALD?  Use full dataset (sla_all.ag.alder/spruce).
-plot(SLA.mean ~ ald_cm, data = sla_all.ag.alder)
-lm17 <- (lm(SLA.mean ~ ald_cm, data = sla_all.ag.alder))
-summary(lm17)
-par(mfrow = c(2, 2))
-plot(lm17)
-
-shapiro.test(sla_all.ag.alder$SLA.mean)
-
-t.test(sla_all.ag.alder$SLA.mean ~ sla_all.ag.alder$ald_class2)
-#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
-#alternative="less" or alternative="greater" option to specify a one tailed test.
-
-var.test(sla_all.ag.alder$SLA.mean[sla_all.ag.alder$ald_class2=="Shallow"],
-         sla_all.ag.alder$SLA.mean[sla_all.ag.alder$ald_class2=="Deep"])
-
-#Spearman, SLA vs. ALD (alder)
-cor.test(sla_all.ag.alder$SLA.mean, sla_all.ag.alder$ald_cm, method="spearman", exact=FALSE)
-
-
-
-plot(SLA.mean ~ ald_cm, data = sla_all.ag.spruce)
-lm18 <- (lm(SLA.mean ~ ald_cm, data = sla_all.ag.spruce))
-summary(lm18)
-par(mfrow = c(2, 2))
-plot(lm18)
-
-shapiro.test(sla_all.ag.spruce$SLA.mean)
-
-t.test(sla_all.ag.spruce$SLA.mean ~ sla_all.ag.spruce$ald_class2)
-#var.equal = TRUE option to specify equal variances and a pooled variance estimate.
-#alternative="less" or alternative="greater" option to specify a one tailed test.
-
-var.test(sla_all.ag.spruce$SLA.mean[sla_all.ag.spruce$ald_class2=="Shallow"],
-         sla_all.ag.spruce$SLA.mean[sla_all.ag.spruce$ald_class2=="Deep"])
-
-
-#Spearman, SLA vs. ALD (spruce)
-cor.test(sla_all.ag.spruce$SLA.mean, sla_all.ag.spruce$ald_cm, method="spearman", exact=FALSE)
-
-# -----------------------------------------------------------------------------
-# QUESTION: Is there a relationship between SLA and NPP? Use full dataset (sla_all.ag.alder/spruce).
-###LOG TRANSFORM?
-plot(npp_gC ~ SLA.mean, data = sla_all.ag.alder)
-lm15 <- (lm(log(npp_gC) ~ log(SLA.mean), data = sla_all.ag.alder))
-summary(lm15)
-par(mfrow = c(2, 2))
-plot(lm15)
-
-plot(npp_gC ~ SLA.mean, data = sla_all.ag.spruce)
-lm16 <- (lm(log(npp_gC) ~ log(SLA.mean), data = sla_all.ag.spruce))
-summary(lm16)
-par(mfrow = c(2, 2))
-plot(lm16)
-
-# -----------------------------------------------------------------------------
-# QUESTION: Indirect: Is there a relationship between slope and SLA? Use full dataset (sla_all.ag.alder/spruce).
-plot(SLA.mean ~ SlopePercent, data = sla_all.ag.alder)
-lm19 <- (lm(SLA.mean ~ SlopePercent, data = sla_all.ag.alder))
-summary(lm19)
-par(mfrow = c(2, 2))
-plot(lm19)
-
-plot(SLA.mean ~ SlopePercent, data = sla_all.ag.spruce)
-lm20 <- (lm(SLA.mean ~ SlopePercent, data = sla_all.ag.spruce))
-summary(lm20)
-par(mfrow = c(2, 2))
-plot(lm20)
-
-# -----------------------------------------------------------------------------
-## 3. PATH ANALYSIS
+## PATH ANALYSIS
 # -----------------------------------------------------------------------------
 ##### From Grace et al. 2015 (book chapter); calculating the number of samples per parameter (d); 2.5 is marginal; 
 # reasoning: sample adequacy depends on model complexity
@@ -1325,7 +1364,7 @@ sem.coefs(modelList2)
 sem.coefs(modelList2, path.alder, standardize="scale")
 
 
-# full model with correlations (feedbacks?) (Fig. 1)
+# full model with correlations (Fig. 1)
 modelList3 = list(
   lm(SLA.mean ~ Ow.mean + CN + ald_cm, data=path.alder),
   lm(Ow.mean ~ ald_cm, data=path.alder),
@@ -1382,3 +1421,37 @@ plot_matrix <- function(matrix_toplot){
 
 plot_matrix(path.alder)
 alder.cov <- getCov(path.alder, names=labels1)
+
+# -----------------------------------------------------------------------------
+# MERGING SLA, GPS, ALD DATA FOR TRY DATABASE SUBMISSION
+# -----------------------------------------------------------------------------
+# Load SLA, ALD, and GPS data
+sla_try <- read.csv("metadata/PNNL_1.cpcrw.sla/CPCRW_2015_SLA_processed.csv")
+ald_try <- read.csv("metadata/PNNL_1.cpcrw.ald/CPCRW_2014_ALD_Combined.csv")
+gps_try <- read.csv("metadata/CPCRW_2014_gps_Linear_Interp.csv")[,c(1,2,5:7)]
+
+# Change column names for SLA
+sla_try <- sla_try[,c(1,2,3,4,9,11,12)]
+colnames(sla_try) <- c("species", "tree", "Transect", "Position.E.to.W_m", "date_sampled", "p2h", "sla")
+sla_try$species <- ifelse(sla_try$species == "ALSP", "alnus-crispa",
+                          ifelse(sla_try$species == "PIGL", "picea-glauca", "picea-mariana"))
+sla_try$exposition <- "natural-environment"
+sla_try$plant.growth.form <- "tree"
+sla_try$maturity <- "mature"
+sla_try$date_sampled <- "Aug-2015"
+sla_try$method <- "Bond-Lamberty et al. 2003, CJFR; for spruce: p2h multiplier to correct for projected-to-hemisurface leaf area."
+sla_try$comments <- "Leaf samples from the top one-third of the canopy were taken from alder, black spruce, and white spruce at six locations (0, 15, 30, 45, 60, and 72 m, from E to W) along each of the 5 hillslope transects, with up to 10 subsamples per species and location (trees identified by tree.number). Active layer depth (ALD) was measured along each transect in September 2014 using a 150 cm probe. If permafrost was not reached at three consecutive positions moving upslope, ALD was assumed to be > 150 cm."
+sla_try$field.site <- "Caribou-Poker Creeks Research Watershed, part of Bonanza Creek LTER, Alaska."
+
+# Merge with GPS
+sla_try_total <- merge(sla_try, gps_try)
+colnames(sla_try_total)[c(14,15)] <- c("longitude", "latitude")
+
+# Merge with ALD
+ald_try_subset <- subset(ald_try, Date == "24Sept2014")
+ald_try_subset <- ald_try_subset[,c(1,2,3)]
+sla_try_total <- merge(sla_try_total, ald_try_subset)
+colnames(sla_try_total)[17] <- "active.layer.depth_cm"
+
+# Write csv
+#write.csv(sla_try_total, "anderson_cpcrw_sla.csv")
